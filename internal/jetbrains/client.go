@@ -9,14 +9,58 @@ import (
 	"jetbrains-ai-proxy/internal/types"
 	"jetbrains-ai-proxy/internal/utils"
 	"log"
+	"sync"
 )
 
 var (
 	jwtBalancer    balancer.JWTBalancer
 	healthChecker  *balancer.HealthChecker
+	initOnce       sync.Once
+	configManager  *config.Manager
 )
 
-// InitializeBalancer 初始化JWT负载均衡器
+// InitializeFromConfig 从配置管理器初始化JWT负载均衡器
+func InitializeFromConfig() error {
+	var initErr error
+
+	initOnce.Do(func() {
+		configManager = config.GetGlobalConfig()
+
+		// 加载配置
+		if err := configManager.LoadConfig(); err != nil {
+			initErr = fmt.Errorf("failed to load config: %v", err)
+			return
+		}
+
+		// 获取配置
+		cfg := configManager.GetConfig()
+		tokens := configManager.GetJWTTokens()
+
+		if len(tokens) == 0 {
+			initErr = fmt.Errorf("no JWT tokens configured")
+			return
+		}
+
+		// 创建负载均衡器
+		jwtBalancer = balancer.NewJWTBalancer(tokens, cfg.LoadBalanceStrategy)
+
+		// 创建并启动健康检查器
+		healthChecker = balancer.NewHealthChecker(jwtBalancer)
+		if cfg.HealthCheckInterval > 0 {
+			healthChecker.SetCheckInterval(cfg.HealthCheckInterval)
+		}
+		healthChecker.Start()
+
+		log.Printf("JWT balancer initialized from config:")
+		log.Printf("  - Tokens: %d", len(tokens))
+		log.Printf("  - Strategy: %s", cfg.LoadBalanceStrategy)
+		log.Printf("  - Health check interval: %v", cfg.HealthCheckInterval)
+	})
+
+	return initErr
+}
+
+// InitializeBalancer 初始化JWT负载均衡器（向后兼容）
 func InitializeBalancer(tokens []string, strategy string) error {
 	if len(tokens) == 0 {
 		return fmt.Errorf("no JWT tokens provided")
@@ -43,11 +87,52 @@ func InitializeBalancer(tokens []string, strategy string) error {
 	return nil
 }
 
+// ReloadConfig 重新加载配置
+func ReloadConfig() error {
+	if configManager == nil {
+		return fmt.Errorf("config manager not initialized")
+	}
+
+	// 重新加载配置
+	if err := configManager.LoadConfig(); err != nil {
+		return fmt.Errorf("failed to reload config: %v", err)
+	}
+
+	// 获取新配置
+	cfg := configManager.GetConfig()
+	tokens := configManager.GetJWTTokens()
+
+	if len(tokens) == 0 {
+		return fmt.Errorf("no JWT tokens in reloaded config")
+	}
+
+	// 更新负载均衡器
+	if jwtBalancer != nil {
+		jwtBalancer.RefreshTokens(tokens)
+	}
+
+	// 更新健康检查间隔
+	if healthChecker != nil && cfg.HealthCheckInterval > 0 {
+		healthChecker.SetCheckInterval(cfg.HealthCheckInterval)
+	}
+
+	log.Printf("Config reloaded successfully:")
+	log.Printf("  - Tokens: %d", len(tokens))
+	log.Printf("  - Strategy: %s", cfg.LoadBalanceStrategy)
+
+	return nil
+}
+
 // StopBalancer 停止负载均衡器
 func StopBalancer() {
 	if healthChecker != nil {
 		healthChecker.Stop()
 	}
+}
+
+// GetConfigManager 获取配置管理器
+func GetConfigManager() *config.Manager {
+	return configManager
 }
 
 func SendJetbrainsRequest(ctx context.Context, req *types.JetbrainsRequest) (*resty.Response, error) {

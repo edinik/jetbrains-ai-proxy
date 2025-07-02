@@ -1,19 +1,103 @@
-# 多JWT负载均衡功能
+# JetBrains AI Proxy - 多JWT负载均衡系统
 
-本项目现在支持多个JWT token的负载均衡，可以有效分散请求负载并提供故障转移能力。
+本项目提供了一个功能完整的多JWT负载均衡系统，支持自动配置发现、健康检查和故障转移。
 
-## 功能特性
+## 🎯 核心特性
 
-- ✅ **多JWT支持**: 支持配置多个JWT tokens
+- ✅ **智能配置管理**: 自动发现和加载配置文件，支持多种配置方式
+- ✅ **多JWT支持**: 支持配置多个JWT tokens进行负载均衡
 - ✅ **负载均衡策略**: 支持轮询(round_robin)和随机(random)两种策略
 - ✅ **健康检查**: 自动检测失效的tokens并从负载均衡池中移除
 - ✅ **故障转移**: 当某个token失效时自动切换到其他健康的token
+- ✅ **配置热重载**: 支持运行时重新加载配置
 - ✅ **并发安全**: 支持高并发环境下的安全使用
+- ✅ **管理端点**: 提供健康检查、配置查看、统计信息等管理接口
 - ✅ **优雅关闭**: 支持优雅关闭和资源清理
 
-## 配置方式
+## 🚀 快速开始
 
-### 1. 环境变量配置
+### 方式1: 使用启动脚本（推荐）
+
+```bash
+# 1. 生成示例配置
+./start.sh --generate
+
+# 2. 编辑配置文件
+vim config/config.json
+# 或编辑环境变量文件
+cp .env.example .env && vim .env
+
+# 3. 启动服务
+./start.sh
+```
+
+### 方式2: 直接使用可执行文件
+
+```bash
+# 生成示例配置
+./jetbrains-ai-proxy --generate-config
+
+# 查看当前配置
+./jetbrains-ai-proxy --print-config
+
+# 启动服务
+./jetbrains-ai-proxy
+```
+
+## ⚙️ 配置方式
+
+系统支持多种配置方式，优先级从高到低：
+
+1. **命令行参数** (最高优先级)
+2. **环境变量**
+3. **配置文件**
+4. **默认值** (最低优先级)
+
+### 1. 配置文件方式（推荐）
+
+系统会自动搜索以下路径的配置文件：
+
+- `config.json`
+- `config/config.json`
+- `configs/config.json`
+- `.config/jetbrains-ai-proxy.json`
+- `$HOME/.config/jetbrains-ai-proxy/config.json`
+
+配置文件示例：
+
+```json
+{
+  "jetbrains_tokens": [
+    {
+      "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
+      "name": "Primary_JWT",
+      "description": "Primary JWT token for JetBrains AI",
+      "priority": 1,
+      "metadata": {
+        "environment": "production",
+        "region": "us-east-1"
+      }
+    },
+    {
+      "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
+      "name": "Secondary_JWT",
+      "description": "Secondary JWT token for load balancing",
+      "priority": 2,
+      "metadata": {
+        "environment": "production",
+        "region": "us-west-2"
+      }
+    }
+  ],
+  "bearer_token": "your_bearer_token_here",
+  "load_balance_strategy": "round_robin",
+  "health_check_interval": "30s",
+  "server_port": 8080,
+  "server_host": "0.0.0.0"
+}
+```
+
+### 2. 环境变量配置
 
 ```bash
 # 多个JWT tokens，用逗号分隔
@@ -27,30 +111,44 @@ export BEARER_TOKEN="your_bearer_token"
 
 # 负载均衡策略（可选，默认为round_robin）
 export LOAD_BALANCE_STRATEGY="random"
+
+# 服务器配置
+export SERVER_HOST="0.0.0.0"
+export SERVER_PORT="8080"
+
+# 指定配置文件路径（可选）
+export CONFIG_FILE="path/to/config.json"
 ```
 
-### 2. 命令行参数配置
+### 3. 命令行参数配置
 
 ```bash
-# 多JWT轮询策略
-./jetbrains-ai-proxy -p 8080 -c "jwt1,jwt2,jwt3" -k "bearer_token" -s "round_robin"
+# 查看所有选项
+./jetbrains-ai-proxy --help
 
-# 多JWT随机策略
-./jetbrains-ai-proxy -p 8080 -c "jwt1,jwt2,jwt3" -k "bearer_token" -s "random"
+# 使用命令行参数启动
+./jetbrains-ai-proxy \
+  -c "jwt1,jwt2,jwt3" \
+  -k "bearer_token" \
+  -s "round_robin" \
+  -p 8080 \
+  -h "0.0.0.0"
 
-# 单JWT（向后兼容）
-./jetbrains-ai-proxy -p 8080 -c "single_jwt" -k "bearer_token"
+# 指定配置文件
+./jetbrains-ai-proxy --config config/my-config.json
 ```
 
 ## 负载均衡策略
 
 ### 轮询策略 (round_robin)
+
 - **默认策略**
 - 按顺序依次使用每个健康的JWT token
 - 确保负载均匀分布
 - 适合大多数场景
 
 ### 随机策略 (random)
+
 - 随机选择一个健康的JWT token
 - 避免可预测的请求模式
 - 适合需要随机分布的场景
@@ -73,6 +171,7 @@ curl http://localhost:8080/health
 ```
 
 响应示例：
+
 ```json
 {
   "status": "ok",
@@ -144,6 +243,7 @@ curl -X POST http://localhost:8080/v1/chat/completions \
 ```
 
 **解决方案**:
+
 - 检查JWT tokens是否有效
 - 检查网络连接
 - 查看健康检查日志
@@ -151,6 +251,7 @@ curl -X POST http://localhost:8080/v1/chat/completions \
 ### 2. 部分tokens不健康
 
 系统会自动使用健康的tokens，但建议：
+
 - 检查不健康tokens的有效性
 - 考虑更换失效的tokens
 - 监控健康检查日志
