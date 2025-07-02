@@ -39,18 +39,17 @@ jobs:
       - name: Build application
         run: |
           platform_id="${{ matrix.goos }}-${{ matrix.goarch }}"
-          mkdir -p dist
-          go build -v -o dist/jetbrains-ai-proxy-${platform_id} .
+          go build -v -o "dist/jetbrains-ai-proxy-${platform_id}" .
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: 0
 
-      # 将整个 dist 目录作为产物上传
-      - name: Upload binaries
+      # 为每个平台上传名称唯一的产物
+      - name: Upload binary artifact
         uses: actions/upload-artifact@v4
         with:
-          name: binaries
+          name: binary-${{ matrix.goos }}-${{ matrix.goarch }}
           path: dist/
 
   # 任务2：构建并推送 Docker 镜像 (使用预编译的二进制文件)
@@ -67,12 +66,17 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 下载所有预编译的二进制文件到 dist 目录
-      - name: Download binaries
+      # 下载所有平台的二进制文件
+      - name: Download all binaries
         uses: actions/download-artifact@v4
         with:
-          name: binaries
-          path: dist
+          path: artifacts
+
+      # 将所有二进制文件移动到统一的 dist 目录
+      - name: Organize binaries
+        run: |
+          mkdir -p dist
+          find artifacts -type f -name "jetbrains-ai-proxy-*" -exec mv {} dist/ \;
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -104,7 +108,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
-  # 任务3：创建 Release (保持不变)
+  # 任务3：创建 Release
   create-release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
@@ -114,13 +118,19 @@ jobs:
       contents: write
 
     steps:
+      # 下载所有平台的二进制文件
       - name: Download all binaries
         uses: actions/download-artifact@v4
         with:
-          name: binaries
-          path: dist
+          path: artifacts
+
+      # 将所有二进制文件移动到统一的 release-assets 目录
+      - name: Organize binaries for release
+        run: |
+          mkdir -p release-assets
+          find artifacts -type f -name "jetbrains-ai-proxy-*" -exec mv {} release-assets/ \;
 
       - name: Create Release and Upload Assets
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*
+          files: release-assets/*
