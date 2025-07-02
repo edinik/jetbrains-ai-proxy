@@ -10,5 +10,3 @@ LABEL maintainer="zouyq <zyqcn@live.com>"
 COPY --from=builder /app/jetbrains-ai-proxy /usr/local/bin/
 
 ENTRYPOINT ["jetbrains-ai-proxy"]
-
-
