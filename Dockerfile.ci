@@ -1,0 +1,9 @@
+FROM alpine
+LABEL maintainer="zouyq <zyqcn@live.com>"
+
+ARG TARGETOS
+ARG TARGETARCH
+
+COPY dist/jetbrains-ai-proxy-${TARGETOS}-${TARGETARCH} /usr/local/bin/jetbrains-ai-proxy
+
+ENTRYPOINT ["jetbrains-ai-proxy"]
