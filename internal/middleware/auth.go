@@ -19,8 +19,8 @@ func BearerAuth() echo.MiddlewareFunc {
 			}
 
 			token := strings.TrimPrefix(auth, "Bearer ")
-
-			if token != config.JetbrainsAiConfig.BearerToken || token == "" {
+                        cfg := config.GetGlobalConfig().GetConfig()
+			if token != cfg.BearerToken || token == "" {
 				log.Printf("invalid token: %s", token)
 				return echo.NewHTTPError(http.StatusUnauthorized, "invalid token")
 			}
