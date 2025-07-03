@@ -2,7 +2,6 @@ package balancer
 
 import (
 	"context"
-	"fmt"
 	"github.com/go-resty/resty/v2"
 	"jetbrains-ai-proxy/internal/types"
 	"log"
@@ -12,15 +11,15 @@ import (
 
 // HealthChecker JWT健康检查器
 type HealthChecker struct {
-	balancer       JWTBalancer
-	client         *resty.Client
-	checkInterval  time.Duration
-	timeout        time.Duration
-	maxRetries     int
-	stopChan       chan struct{}
-	wg             sync.WaitGroup
-	running        bool
-	mutex          sync.RWMutex
+	balancer      JWTBalancer
+	client        *resty.Client
+	checkInterval time.Duration
+	timeout       time.Duration
+	maxRetries    int
+	stopChan      chan struct{}
+	wg            sync.WaitGroup
+	running       bool
+	mutex         sync.RWMutex
 }
 
 // NewHealthChecker 创建健康检查器
@@ -45,14 +44,14 @@ func NewHealthChecker(balancer JWTBalancer) *HealthChecker {
 func (hc *HealthChecker) Start() {
 	hc.mutex.Lock()
 	defer hc.mutex.Unlock()
-	
+
 	if hc.running {
 		return
 	}
-	
+
 	hc.running = true
 	hc.wg.Add(1)
-	
+
 	go hc.healthCheckLoop()
 	log.Println("JWT health checker started")
 }
@@ -61,11 +60,11 @@ func (hc *HealthChecker) Start() {
 func (hc *HealthChecker) Stop() {
 	hc.mutex.Lock()
 	defer hc.mutex.Unlock()
-	
+
 	if !hc.running {
 		return
 	}
-	
+
 	hc.running = false
 	close(hc.stopChan)
 	hc.wg.Wait()
@@ -75,13 +74,13 @@ func (hc *HealthChecker) Stop() {
 // healthCheckLoop 健康检查循环
 func (hc *HealthChecker) healthCheckLoop() {
 	defer hc.wg.Done()
-	
+
 	ticker := time.NewTicker(hc.checkInterval)
 	defer ticker.Stop()
-	
+
 	// 启动时立即执行一次检查
 	hc.performHealthCheck()
-	
+
 	for {
 		select {
 		case <-ticker.C:
@@ -95,21 +94,21 @@ func (hc *HealthChecker) healthCheckLoop() {
 // performHealthCheck 执行健康检查
 func (hc *HealthChecker) performHealthCheck() {
 	log.Println("Performing JWT health check...")
-	
+
 	// 获取所有tokens进行检查
 	baseBalancer, ok := hc.balancer.(*BaseBalancer)
 	if !ok {
 		log.Println("Warning: Cannot access tokens for health check")
 		return
 	}
-	
+
 	baseBalancer.mutex.RLock()
 	tokens := make([]string, 0, len(baseBalancer.tokens))
 	for token := range baseBalancer.tokens {
 		tokens = append(tokens, token)
 	}
 	baseBalancer.mutex.RUnlock()
-	
+
 	// 并发检查所有tokens
 	var wg sync.WaitGroup
 	for _, token := range tokens {
@@ -120,7 +119,7 @@ func (hc *HealthChecker) performHealthCheck() {
 		}(token)
 	}
 	wg.Wait()
-	
+
 	healthyCount := hc.balancer.GetHealthyTokenCount()
 	totalCount := hc.balancer.GetTotalTokenCount()
 	log.Printf("Health check completed: %d/%d tokens healthy", healthyCount, totalCount)
@@ -130,7 +129,7 @@ func (hc *HealthChecker) performHealthCheck() {
 func (hc *HealthChecker) checkTokenHealth(token string) {
 	ctx, cancel := context.WithTimeout(context.Background(), hc.timeout)
 	defer cancel()
-	
+
 	// 创建一个简单的测试请求
 	testRequest := &types.JetbrainsRequest{
 		Prompt:  types.PROMPT,
@@ -144,20 +143,20 @@ func (hc *HealthChecker) checkTokenHealth(token string) {
 			},
 		},
 	}
-	
+
 	success := false
 	for retry := 0; retry < hc.maxRetries; retry++ {
 		if hc.testTokenRequest(ctx, token, testRequest) {
 			success = true
 			break
 		}
-		
+
 		// 重试前等待一小段时间
 		if retry < hc.maxRetries-1 {
 			time.Sleep(time.Second)
 		}
 	}
-	
+
 	if success {
 		hc.balancer.MarkTokenHealthy(token)
 	} else {
@@ -173,24 +172,24 @@ func (hc *HealthChecker) testTokenRequest(ctx context.Context, token string, req
 		SetHeader(types.JwtTokenKey, token).
 		SetBody(req).
 		Post(types.ChatStreamV7)
-	
+
 	if err != nil {
 		log.Printf("Health check request error for token %s...: %v", token[:min(len(token), 10)], err)
 		return false
 	}
-	
+
 	// 检查响应状态码
 	if resp.StatusCode() == 200 {
 		return true
 	}
-	
+
 	// 401表示token无效，403可能表示配额用完但token有效
 	if resp.StatusCode() == 403 {
 		// 配额用完但token有效，仍然标记为健康
 		return true
 	}
-	
-	log.Printf("Health check failed for token %s...: status %d", 
+
+	log.Printf("Health check failed for token %s...: status %d",
 		token[:min(len(token), 10)], resp.StatusCode())
 	return false
 }

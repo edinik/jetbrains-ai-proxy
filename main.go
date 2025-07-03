@@ -141,7 +141,7 @@ func generateExampleConfig() error {
 	}
 
 	// 生成.env示例文件
-	discovery := config.NewConfigDiscovery(manager)
+	config.NewConfigDiscovery(manager)
 	envContent := `# JetBrains AI Proxy Configuration
 # Copy this file to .env and fill in your actual values
 
@@ -257,8 +257,8 @@ func setupManagementEndpoints(e *echo.Echo, manager *config.Manager) {
 			},
 			"config": map[string]interface{}{
 				"health_check_interval": cfg.HealthCheckInterval.String(),
-				"server_host":          cfg.ServerHost,
-				"server_port":          cfg.ServerPort,
+				"server_host":           cfg.ServerHost,
+				"server_port":           cfg.ServerPort,
 			},
 		})
 	})
